@@ -37,13 +37,13 @@ namespace Builder
             FetchAction.Subscribe((InteractionData idata) =>
             {
                 AgentPrivate Quester = ScenePrivate.FindAgent(idata.AgentId);
-                GetAvailableQuests(Quester);
+                FetchLevel(Quester);
             });
 
             ScenePrivate.Chat.Subscribe(Chat.DefaultChannel, OnChat, true);
         }
 
-        public void GetAvailableQuests(AgentPrivate Quester)
+        public void FetchLevel(AgentPrivate Quester)
         {
             HttpRequestOptions options = new HttpRequestOptions();
             options.Method = HttpRequestMethod.GET;
@@ -77,6 +77,36 @@ namespace Builder
             }
         }
 
+        public void FetchLevelChat()
+        {
+            HttpRequestOptions options = new HttpRequestOptions();
+            options.Method = HttpRequestMethod.GET;
+
+            var result = WaitFor(ScenePrivate.HttpClient.Request, LevelUrl, options) as HttpClient.RequestData;
+            if (!result.Success || result.Response.Status != 200)
+            {
+                Log.Write(LogLevel.Error, $"Bad request, {result.Response.Status}");
+                return;
+            }
+
+            string jsonResponse = result.Response.Body;
+            JsonSerializerOptions jsonOptions = new JsonSerializerOptions
+            {
+                SerializeReferences = false
+            };
+            LevelResponse parsed = ((JsonSerializationData<LevelResponse>)(WaitFor(JsonSerializer.Deserialize<LevelResponse>, jsonResponse, jsonOptions))).Object;
+
+            foreach (CubeLocation location in parsed.data.cubes)
+            {
+                var match = CubeLocations.Find(location);
+                if (match == null)
+                {
+                    ScenePrivate.CreateClusterData data = Spawner.SpawnCube(location.x, location.y, location.z);
+                    Cubes.AddLast(data);
+                }
+            }
+        }
+
         public void OnChat(ChatData chatData)
         {
             var cmds = chatData.Message.Split(new Char[] { ' ' });
@@ -91,6 +121,10 @@ namespace Builder
                 }
                 Cubes.Clear();
                 CubeLocations.Clear();
+            }
+            else if (cmds[0] == "/load")
+            {
+                FetchLevelChat();
             }
 
         }
