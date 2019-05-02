@@ -21,17 +21,30 @@ namespace Builder
         [DisplayName("Cube")]
         [EditorVisible]
         public ClusterResource cube = null;
+        public ClusterResource ramp = null;
 
         public override void Init()
         {
 
         }
 
-        public ScenePrivate.CreateClusterData SpawnCube(int x, int y, int z)
+        public ScenePrivate.CreateClusterData SpawnCube(WebVector location)
         {
-            Vector position = new Vector(x, y, z);
+            Vector position = new Vector(location.x, location.y, location.z);
             ScenePrivate.CreateClusterData createData = null;
             createData = (ScenePrivate.CreateClusterData)WaitFor(ScenePrivate.CreateCluster, cube, position, Quaternion.Identity, Vector.Zero);
+            return createData;
+        }
+
+        public ScenePrivate.CreateClusterData SpawnRamp(ShapePosition position)
+        {
+            Vector location = new Vector(position.location.x, position.location.y, position.location.z);
+            Vector eulerRotation = new Vector(position.rotation.x, position.rotation.y, position.rotation.z);
+
+            Quaternion rotation = Quaternion.FromEulerAngles(eulerRotation);
+            ScenePrivate.CreateClusterData createData = null;
+
+            createData = (ScenePrivate.CreateClusterData)WaitFor(ScenePrivate.CreateCluster, ramp, location, rotation, Vector.Zero);
             return createData;
         }
     }
