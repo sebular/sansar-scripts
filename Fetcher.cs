@@ -13,21 +13,26 @@ namespace Builder
 
         public interface ISpawner
         {
-            ScenePrivate.CreateClusterData SpawnCube(WebVector location);
-            ScenePrivate.CreateClusterData SpawnRamp(ShapePosition position);
+            ScenePrivate.CreateClusterData SpawnCube(ShapeDefinition definition);
+            ScenePrivate.CreateClusterData SpawnRamp(ShapeDefinition definition);
+            ScenePrivate.CreateClusterData SpawnGlobalObjective(ObjectiveEntity entity);
         }
 
         [DisplayName("Level URL")]
         [EditorVisible]
         public string LevelUrl = "";
 
-        public Interaction FetchAction;
+        [DisplayName("Bit URL")]
+        [EditorVisible]
+        public string BitUrl = "";
 
         private ISpawner Spawner;
-        private LinkedList<WebVector> CubeLocations = new LinkedList<WebVector>();
-        private LinkedList<WebVector> RampLocations = new LinkedList<WebVector>();
+        private LinkedList<WebVector> CubePositions = new LinkedList<WebVector>();
+        private LinkedList<WebVector> RampPositions = new LinkedList<WebVector>();
+        private LinkedList<WebVector> ObjectivePositions = new LinkedList<WebVector>();
         private LinkedList<ScenePrivate.CreateClusterData> Cubes = new LinkedList<ScenePrivate.CreateClusterData>();
         private LinkedList<ScenePrivate.CreateClusterData> Ramps = new LinkedList<ScenePrivate.CreateClusterData>();
+        private LinkedList<ScenePrivate.CreateClusterData> Objectives = new LinkedList<ScenePrivate.CreateClusterData>();
 
         public override void Init()
         {
@@ -37,50 +42,53 @@ namespace Builder
                 Log.Write(LogLevel.Error, "Fetcher failed to find the Spawner :(");
             }
 
-            FetchAction.Subscribe((InteractionData idata) =>
-            {
-                AgentPrivate Quester = ScenePrivate.FindAgent(idata.AgentId);
-                FetchLevel(Quester);
-            });
-
             ScenePrivate.Chat.Subscribe(Chat.DefaultChannel, OnChat, true);
         }
 
-        public void FetchLevel(AgentPrivate Quester)
+        public void FetchBit(string bitName = "default")
         {
             HttpRequestOptions options = new HttpRequestOptions();
             options.Method = HttpRequestMethod.GET;
-            Guid PersonaId = Quester.AgentInfo.AvatarUuid;
-            Quester.SendChat($"Fetching {LevelUrl}");
 
-            var result = WaitFor(ScenePrivate.HttpClient.Request, LevelUrl, options) as HttpClient.RequestData;
+            var result = WaitFor(ScenePrivate.HttpClient.Request, $"{BitUrl}/{bitName}", options) as HttpClient.RequestData;
             if (!result.Success || result.Response.Status != 200)
             {
-                Log.Write(LogLevel.Error, $"Bad request, {result.Response.Status}");
+                Log.Write(LogLevel.Error, $"Bad request fetching bit, {result.Response.Status}");
                 return;
             }
 
             string jsonResponse = result.Response.Body;
-            Quester.SendChat($"{jsonResponse}");
             JsonSerializerOptions jsonOptions = new JsonSerializerOptions
             {
                 SerializeReferences = false
             };
-            LevelResponse parsed = ((JsonSerializationData<LevelResponse>)(WaitFor(JsonSerializer.Deserialize<LevelResponse>, jsonResponse, jsonOptions))).Object;
-            Quester.SendChat(parsed.ToString());
+            BitResponse parsed = ((JsonSerializationData<BitResponse>)(WaitFor(JsonSerializer.Deserialize<BitResponse>, jsonResponse, jsonOptions))).Object;
 
-            foreach (WebVector location in parsed.data.cubes)
+            foreach (ShapeDefinition definition in parsed.data.cubes)
             {
-                var match = CubeLocations.Find(location);
+                var match = CubePositions.Find(definition.p);
                 if (match == null)
                 {
-                    ScenePrivate.CreateClusterData data = Spawner.SpawnCube(location);
+                    ScenePrivate.CreateClusterData data = Spawner.SpawnCube(definition);
                     Cubes.AddLast(data);
+                    CubePositions.AddLast(definition.p);
                 }
             }
+
+            foreach (ShapeDefinition definition in parsed.data.ramps)
+            {
+                var match = RampPositions.Find(definition.p);
+                if (match == null)
+                {
+                    ScenePrivate.CreateClusterData data = Spawner.SpawnRamp(definition);
+                    Ramps.AddLast(data);
+                    RampPositions.AddLast(definition.p);
+                }
+            }
+            
         }
 
-        public void FetchLevelChat(string levelName = "default")
+        public void FetchLevel(string levelName = "default")
         {
             HttpRequestOptions options = new HttpRequestOptions();
             options.Method = HttpRequestMethod.GET;
@@ -88,37 +96,27 @@ namespace Builder
             var result = WaitFor(ScenePrivate.HttpClient.Request, $"{LevelUrl}/{levelName}", options) as HttpClient.RequestData;
             if (!result.Success || result.Response.Status != 200)
             {
-                Log.Write(LogLevel.Error, $"Bad request, {result.Response.Status}");
+                Log.Write(LogLevel.Error, $"Bad request fetching level, {result.Response.Status}");
                 return;
             }
 
             string jsonResponse = result.Response.Body;
-            JsonSerializerOptions jsonOptions = new JsonSerializerOptions
+            LevelResponse parsed = ((JsonSerializationData<LevelResponse>)(WaitFor(JsonSerializer.Deserialize<LevelResponse>, jsonResponse))).Object;
+            foreach (BitDefinition bitDefinition in parsed.data.bits)
             {
-                SerializeReferences = false
-            };
-            LevelResponse parsed = ((JsonSerializationData<LevelResponse>)(WaitFor(JsonSerializer.Deserialize<LevelResponse>, jsonResponse, jsonOptions))).Object;
-
-            foreach (WebVector location in parsed.data.cubes)
-            {
-                var match = CubeLocations.Find(location);
-                if (match == null)
-                {
-                    ScenePrivate.CreateClusterData data = Spawner.SpawnCube(location);
-                    Cubes.AddLast(data);
-                    CubeLocations.AddLast(location);
-                }
+                FetchBit(bitDefinition.name);
             }
 
-            foreach (ShapePosition position in parsed.data.ramps)
+            foreach (ObjectiveEntity entity in parsed.data.objectives)
             {
-                var match = RampLocations.Find(position.location);
+                var match = ObjectivePositions.Find(entity.definition.p);
                 if (match == null)
                 {
-                    ScenePrivate.CreateClusterData data = Spawner.SpawnRamp(position);
-                    Ramps.AddLast(data);
-                    RampLocations.AddLast(position.location);
+                    ScenePrivate.CreateClusterData data = Spawner.SpawnGlobalObjective(entity);
+                    Objectives.AddLast(data);
+                    ObjectivePositions.AddLast(entity.definition.p);
                 }
+
             }
         }
 
@@ -135,7 +133,7 @@ namespace Builder
                     }
                 }
                 Cubes.Clear();
-                CubeLocations.Clear();
+                CubePositions.Clear();
 
                 foreach(ScenePrivate.CreateClusterData data in Ramps)
                 {
@@ -145,17 +143,38 @@ namespace Builder
                     }
                 }
                 Ramps.Clear();
-                RampLocations.Clear();
+                RampPositions.Clear();
+
+                foreach(ScenePrivate.CreateClusterData data in Objectives)
+                {
+                    if (data != null && data.ClusterReference != null)
+                    {
+                        data.ClusterReference.Destroy();
+                    }
+                }
+                Objectives.Clear();
+                ObjectivePositions.Clear();
             }
-            else if (cmds[0] == "/load")
+            else if (cmds[0] == "/level")
             {
                 if (cmds.Length == 1)
                 {
-                    FetchLevelChat();
+                    FetchLevel();
                 }
                 else if (cmds.Length == 2)
                 {
-                    FetchLevelChat(cmds[1]);
+                    FetchLevel(cmds[1]);
+                }
+            }
+            else if (cmds[0] == "/bit")
+            {
+                if (cmds.Length == 1)
+                {
+                    FetchBit();
+                }
+                else if (cmds.Length == 2)
+                {
+                    FetchBit(cmds[1]);
                 }
             }
 
@@ -175,18 +194,42 @@ namespace Builder
 
     }
 
-    public class ShapePosition
+    public class ShapeDefinition
     {
-        public WebVector location;
-        public WebVector rotation;
+        public WebVector p;
+        public WebVector r;
+        public string s;
+        public string c;
     }
 
+    public class ObjectiveEntity
+    {
+        public ShapeDefinition definition;
+        public string handle;
+        public string storylineId;
+        public string prompt;
+    }
+
+    public class BitData 
+    {
+        public List<ShapeDefinition> cubes;
+        public List<ShapeDefinition> ramps;
+    }
+
+    public class BitResponse 
+    {
+        public BitData data;
+    }
+
+    public class BitDefinition
+    {
+        public string name;
+    }
     public class LevelData
     {
-        public List<WebVector> cubes;
-        public List<ShapePosition> ramps;
+        public List<BitDefinition> bits;
+        public List<ObjectiveEntity> objectives;
     }
-
     public class LevelResponse
     {
         public LevelData data;
