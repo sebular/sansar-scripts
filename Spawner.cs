@@ -75,10 +75,6 @@ namespace Builder
         [EditorVisible]
         public ClusterResource rampWhiteEighth = null;
 
-        [DisplayName("Ramp White Sixteenth")]
-        [EditorVisible]
-        public ClusterResource rampWhiteSixteenth = null;
-
         [DisplayName("Ramp Black Full")]
         [EditorVisible]
         public ClusterResource rampBlackFull = null;
@@ -149,7 +145,7 @@ namespace Builder
                 { "half", rampWhiteHalf },
                 { "quarter", rampWhiteQuarter },
                 { "eighth", rampWhiteEighth },
-                { "sixteenth", rampWhiteSixteenth }
+                { "sixteenth", cubeWhiteSixteenth }
             };
 
             Dictionary<string, ClusterResource> blackRampSizes = new Dictionary<string, ClusterResource>()
