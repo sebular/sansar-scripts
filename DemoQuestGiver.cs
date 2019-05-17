@@ -44,7 +44,7 @@ namespace DemoQuest
             BaseUrl = $"https://profiles-api{Grid}.sansar.com";
             GiveQuest.Subscribe((InteractionData idata) =>
             {
-                GiveQuest.SetPrompt($"Character: {CharacterId}");
+                GiveQuest.SetPrompt(GreetingText);
                 AgentPrivate Quester = ScenePrivate.FindAgent(idata.AgentId);
 
                 List<string> CompletedQuestIds = CompleteAnyQuests(Quester);
